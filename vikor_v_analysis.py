@@ -58,25 +58,25 @@ class VikorVAnalysis:
 
             self.comparisons_v[scenario] = comparison_v
 
-    def draw_v_weights_plots(self):
+    def draw_v_weights_plots(self, path='var/weights.png', figsize=(10,10), ylim=[0, 0.5]):
         if self.v_weights_scenarios is None:
             self.run_experiment_v()
 
-        plt.figure(figsize=(15, 15))
-        plt.subplots_adjust(hspace=0.3)
-        plt.suptitle(f'Computed weights of criteria for varied scenarios')
+        plt.clf()
+
+        plt.figure(figsize=figsize)
         i = 0
         for scenario, weights in self.v_weights_scenarios.items():
             i += 1
             plt.subplot(len(self.v_weights_scenarios), 1, i)
-            plt.gca().set_ylim([0, 0.6])
+            plt.gca().set_ylim(ylim)
             plt.title(scenario)
             plt.plot(self.data.columns, weights, label=scenario)
             plt.grid(color='whitesmoke', linestyle='solid')
         # plt.legend()
-        plt.savefig('var/weights.png')
+        if (path is not None):
+            plt.savefig('var/weights.png')
         # plt.show()
-        plt.clf()
 
     def csv_v_weights(self):
         if self.v_weights_scenarios is None:
@@ -95,7 +95,7 @@ class VikorVAnalysis:
             hplt.savefig(f'var/correlation_{scenario}.png')
             # plt.show()
 
-    def sensitivity_analysis_v(self):
+    def sensitivity_analysis_v(self, path_template='var/sensitivity_{}.png'):
         v_step_rounding = len(f"{self.V_STEP}") - 2
         ZOOM_MAX = 2
         for scenario, comparison_v in self.comparisons_v.items():
@@ -104,10 +104,10 @@ class VikorVAnalysis:
             y_alternatives_ranks = pd.DataFrame(rankdata(y_alternatives_scores, axis=0, method='min'),
                                                 index=y_alternatives_scores.index)
 
-            plt.figure(figsize=(30, 10))
+            plt.figure(figsize=(20, 10))
             plt.suptitle(f'Sensitivity analysis for scenario {scenario}')
 
-            plt.subplot(1, 3, 1)
+            plt.subplot(1, 2, 1)
             plt.grid(color='whitesmoke', linestyle='solid')
             plt.title('Scores')
             plt.axvline(x=0.5, color='b', linestyle='--')
@@ -116,7 +116,7 @@ class VikorVAnalysis:
                 plt.plot(x_v_values, y_alternatives_scores.loc[i], label=i)
             plt.legend()
 
-            plt.subplot(1, 3, 2)
+            plt.subplot(1, 2, 2)
             plt.grid(color='whitesmoke', linestyle='solid')
             plt.title('Ranks')
             plt.axvline(x=0.5, color='b', linestyle='--')
@@ -125,16 +125,18 @@ class VikorVAnalysis:
                 plt.plot(x_v_values, y_alternatives_ranks.loc[i], label=i)
             plt.legend()
 
-            plt.subplot(1, 3, 3)
-            plt.grid(color='whitesmoke', linestyle='solid')
-            plt.title('Scores Zoomed')
-            plt.gca().invert_yaxis()
-            for i in y_alternatives_scores.index:
-                plt.plot(x_v_values[:ZOOM_MAX], y_alternatives_scores.loc[i][:ZOOM_MAX], label=i)
-            plt.legend()
+            # plt.subplot(1, 3, 3)
+            # plt.grid(color='whitesmoke', linestyle='solid')
+            # plt.title('Scores Zoomed')
+            # plt.gca().invert_yaxis()
+            # for i in y_alternatives_scores.index:
+            #     plt.plot(x_v_values[:ZOOM_MAX], y_alternatives_scores.loc[i][:ZOOM_MAX], label=i)
+            # plt.legend()
 
-            plt.savefig(f'var/sensitivity_{scenario}.png')
-            # plt.show()
+            if (path_template is not None):
+                plt.savefig(path_template.format(scenario))
+            else:
+                plt.show()
 
             plt.clf()
 
