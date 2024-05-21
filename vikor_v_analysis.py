@@ -138,7 +138,6 @@ class VikorVAnalysis:
             else:
                 plt.show()
 
-            plt.clf()
 
     def run_experiment_weights(self):
         self.weights_scenarios_weights = {}
@@ -167,7 +166,7 @@ class VikorVAnalysis:
 
         self.comparison_w.compute()
 
-    def draw_weights_sensitivity_plots(self):
+    def draw_weights_sensitivity_plots(self, path='var/weights_sensitivity.png'):
         if self.weights_scenarios_weights is None:
             self.run_experiment_weights()
 
@@ -182,19 +181,18 @@ class VikorVAnalysis:
             plt.title(scenario)
             plt.plot(self.data.columns, weights, label=scenario)
             plt.grid(color='whitesmoke', linestyle='solid')
-        # plt.legend()
-        plt.savefig('var/weights_sensitivity.png')
-        # plt.show()
-        plt.clf()
 
-    def heatmap_weights_correlations(self):
+        if (path is not None):
+            plt.savefig(path)
+
+    def heatmap_weights_correlations(self, path='var/correlation_weights.png'):
         if self.comparison_w is None:
             self.run_experiment_weights()
 
         hplt = self.comparison_w.plot_correlations_heatmap(figure_size=(50, 20))
-        hplt.savefig(f'var/correlation_weights.png')
-        # hplt.show()
-        hplt.clf()
+
+        if (path is not None):
+            hplt.savefig(path)
 
     def draw_weights_scores(self):
         if self.comparison_w is None:
@@ -267,7 +265,7 @@ class VikorVAnalysis:
         # plt.legend()
         plt.savefig('var/weights_with_ahp.png')
         # plt.show()
-        plt.clf()
+
 
     def csv_ahp_weights(self):
         if self.weights_scenarios_ahp is None:
@@ -282,8 +280,7 @@ class VikorVAnalysis:
 
         hplt = self.comparison_ahp.plot_correlations_heatmap(figure_size=(10, 10))
         hplt.savefig(f'var/correlation_with_ahp.png')
-        # hplt.show()
-        hplt.clf()
+
 
     def draw_ahp_results(self):
         if self.comparison_ahp is None:
