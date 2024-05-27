@@ -312,13 +312,112 @@ class VikorVAnalysis:
 
         plt.savefig(f'var/results_with_ahp.png')
 
+    def run_experiment_criteria_elimination(self, limited_data, limited_impacts, ahp_weights):
+        if (self.weights_scenarios_ahp is None):
+            self.run_experiment_ahp()
+
+        self.limited_data = limited_data
+        self.limited_impacts = limited_impacts
+
+        self.limited_weights_scenarios_ahp = {
+            'eq': np.full(self.limited_data.shape[1], 1 / self.limited_data.shape[1]),
+            'crit': critic_weighting(self.limited_data.to_numpy()),
+            'ent': entropy_weighting(self.limited_data.to_numpy()),
+            'gini': gini_weighting(self.limited_data.to_numpy()),
+            'ahp_clusters': ahp_weights
+        }
+
+        self.comparison_criteria_elimination = Comparison(self.limited_data.shape[0], self.limited_data.shape[1])
+        self.comparison_criteria_elimination.add_evaluator('v=0.5', VikorEvaluator(0.5))
+        self.comparison_criteria_elimination.add_decision_problem(self.DECISION_PROBLEM, self.limited_data, self.limited_impacts)
+        for scenario, weights in self.limited_weights_scenarios_ahp.items():
+            self.comparison_criteria_elimination.add_weights_set(scenario, weights)
+
+        self.comparison_criteria_elimination.compute(compute_correlations=True)
+
+    def draw_elimination_results_comparison(self, scenario: str, path = None):
+        if self.comparison_criteria_elimination is None:
+            raise ValueError("First run the experiment")
+
+        comparison_ahp_df = self.comparison_ahp.to_dataframe(normalize_scores=False)
+        comparison_elim_df = self.comparison_criteria_elimination.to_dataframe(normalize_scores=False)
+
+        plt.clf()
+
+        plt.figure(figsize=(20, 10))
+        x_values = self.data.index.to_list()
+
+        scenario_ahp_row = comparison_ahp_df[comparison_ahp_df['weights_set'] == scenario].iloc[0]
+        y_scores_ahp = scenario_ahp_row[3:]
+        y_ranks_ahp = pd.DataFrame(rankdata(y_scores_ahp, axis=0, method='min'), index=y_scores_ahp.index)
+
+        scenario_elim_row = comparison_elim_df[comparison_elim_df['weights_set'] == scenario].iloc[0]
+        y_scores_elim = scenario_elim_row[3:]
+        y_ranks_elim = pd.DataFrame(rankdata(y_scores_elim, axis=0, method='min'), index=y_scores_elim.index)
+
+        plt.subplot(1,2,1)
+        plt.title("Scores")
+        plt.plot(x_values, y_scores_ahp, label=f"Baseline {scenario}")
+        plt.plot(x_values, y_scores_elim, label=f"{scenario} with eliminated criteria")
+        plt.gca().invert_yaxis()
+        plt.legend()
+
+        plt.subplot(1,2,2)
+        plt.title("Ranks")
+        plt.plot(x_values, y_ranks_ahp, label=f"Baseline {scenario}")
+        plt.plot(x_values, y_ranks_elim, label=f"{scenario} with eliminated criteria")
+        plt.gca().invert_yaxis()
+        plt.legend()
+
+        if (path is not None):
+            plt.savefig(path)
+
+    def heatmap_elimination_correlations(self, path=None):
+        if self.comparison_criteria_elimination is None:
+            raise ValueError("First run the experiment")
+
+        hplt = self.comparison_criteria_elimination.plot_correlations_heatmap(figure_size=(10, 10))
+
+        if (path is not None):
+            hplt.savefig(path)
+
+    def draw_ahp_and_elim_weights_plots(self):
+        if self.weights_scenarios_ahp is None or self.limited_weights_scenarios_ahp is None:
+            raise ValueError("First run the experiment")
+
+        plt.figure(figsize=(15, 15))
+        plt.subplots_adjust(hspace=0.3)
+        plt.suptitle(f'Computed weights of criteria for varied scenarios')
+        i = 0
+        for scenario, weights in self.weights_scenarios_ahp.items():
+            i += 1
+            plt.subplot(len(self.weights_scenarios_ahp), 1, i)
+            plt.title(scenario)
+            plt.plot(self.data.columns, weights, label=f"{scenario} - baseline")
+            plt.plot(self.limited_data.columns, self.limited_weights_scenarios_ahp[scenario], 'x', label=f"{scenario} - eliminated criteria")
+            plt.grid(color='whitesmoke', linestyle='solid')
+            plt.legend()
+        plt.savefig('var/weights_with_ahp_eliminated.png')
+        # plt.show()
+
+
 
 if __name__ == '__main__':
     experiment = VikorVAnalysis('wind_farms_data.csv')
     experiment.run_experiment_v()
     experiment.run_experiment_weights()
     experiment.run_experiment_ahp()
-
+    experiment.run_experiment_criteria_elimination(
+        experiment.data.drop(columns=['S16', 'S17', 'F28', 'F29', 'F30']),
+        experiment.impacts.drop(index=['S16', 'S17', 'F28', 'F29', 'F30']),
+        ahp_weights=np.array([
+            0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6,
+            0.176/3, 0.176/3, 0.176/3,
+            0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, # updated from 8
+            0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10,
+            # financial costs removed completely
+        ])
+    )
     experiment.draw_v_weights_plots()
     experiment.csv_v_weights()
     # experiment.heatmap_v_correlations() #todo sprawdzic dlaczego w EQ jest bialo
@@ -332,3 +431,8 @@ if __name__ == '__main__':
     experiment.csv_ahp_weights()
     # experiment.heatmap_ahp_correlations()
     experiment.draw_ahp_results()
+
+    experiment.draw_elimination_results_comparison('ahp_clusters')
+    plt.show()
+    experiment.draw_ahp_and_elim_weights_plots()
+    experiment.heatmap_elimination_correlations()
