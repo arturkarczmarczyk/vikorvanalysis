@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 from comparator.comparison import Comparison
-from pyrepo_mcda.weighting_methods import critic_weighting, entropy_weighting, gini_weighting
 from matplotlib import pyplot as plt
+from pyrepo_mcda.weighting_methods import critic_weighting
 from scipy.stats import rankdata
 
 from vikor_evaluator import VikorEvaluator
@@ -37,8 +37,8 @@ class VikorVAnalysis:
         self.v_weights_scenarios = {
             'eq': np.full(self.data.shape[1], 1 / self.data.shape[1]),
             'crit': critic_weighting(self.data.to_numpy()),
-            'ent': entropy_weighting(self.data.to_numpy()),
-            'gini': gini_weighting(self.data.to_numpy()),
+            # 'ent': entropy_weighting(self.data.to_numpy()),
+            # 'gini': gini_weighting(self.data.to_numpy()),
         }
 
         v_step_rounding = len(f"{self.V_STEP}") - 2
@@ -201,7 +201,7 @@ class VikorVAnalysis:
         comparison_w_df = self.comparison_w.to_dataframe(normalize_scores=False)
 
         plt.clf()
-        plt.figure(figsize=(10, 20))
+        plt.figure(figsize=(12, 10))
         plt.subplots_adjust(hspace=0.5)
         x_values = self.data.index.to_list()
         y_scores_eq = comparison_w_df[comparison_w_df['weights_set'] == 'eq'].iloc[0][3:]
@@ -216,7 +216,7 @@ class VikorVAnalysis:
             # y_alternatives_ranks = pd.DataFrame(rankdata(y_alternatives_scores, axis=0, method='min'),
             #                                 index=y_alternatives_scores.index)
 
-            plt.subplot(10, 3, i)
+            plt.subplot(6, 5, i)
             plt.gca().invert_yaxis()
             plt.title(scenario)
             plt.plot(x_values, y_scores_eq, '-')
@@ -229,8 +229,8 @@ class VikorVAnalysis:
         self.weights_scenarios_ahp = {
             'eq': np.full(self.data.shape[1], 1 / self.data.shape[1]),
             'crit': critic_weighting(self.data.to_numpy()),
-            'ent': entropy_weighting(self.data.to_numpy()),
-            'gini': gini_weighting(self.data.to_numpy()),
+            # 'ent': entropy_weighting(self.data.to_numpy()),
+            # 'gini': gini_weighting(self.data.to_numpy()),
             'ahp_clusters': np.array(
                 [0.0062, 0.0062, 0.0062, 0.0062, 0.0062, 0.0062,
                  0.0530, 0.0530, 0.0530,
@@ -322,8 +322,8 @@ class VikorVAnalysis:
         self.limited_weights_scenarios_ahp = {
             'eq': np.full(self.limited_data.shape[1], 1 / self.limited_data.shape[1]),
             'crit': critic_weighting(self.limited_data.to_numpy()),
-            'ent': entropy_weighting(self.limited_data.to_numpy()),
-            'gini': gini_weighting(self.limited_data.to_numpy()),
+            # 'ent': entropy_weighting(self.limited_data.to_numpy()),
+            # 'gini': gini_weighting(self.limited_data.to_numpy()),
             'ahp_clusters': ahp_weights
         }
 
@@ -400,39 +400,103 @@ class VikorVAnalysis:
         plt.savefig('var/weights_with_ahp_eliminated.png')
         # plt.show()
 
+    def run_experiment_financial_efficiency(self, criteria_for_denominator):
+        self.numerator_data = self.data.drop(columns=criteria_for_denominator)
+        self.numerator_impacts = self.impacts.drop(index=criteria_for_denominator)
+
+        self.denominator_data = self.data[criteria_for_denominator]
+        self.denominator_values = self.denominator_data.sum(axis=1)
+
+        self.financial_efficiency_weights_scenarios = {
+            'eq': np.full(self.numerator_data.shape[1], 1 / self.numerator_data.shape[1]),
+            'crit': critic_weighting(self.numerator_data.to_numpy()),
+        }
+
+        self.comparison_financial_efficiency = Comparison(self.numerator_data.shape[0], self.numerator_data.shape[1])
+        self.comparison_financial_efficiency.add_evaluator('v=0.5', VikorEvaluator(0.5))
+        self.comparison_financial_efficiency.add_decision_problem(self.DECISION_PROBLEM, self.numerator_data, self.numerator_impacts)
+        for scenario, weights in self.financial_efficiency_weights_scenarios.items():
+            self.comparison_financial_efficiency.add_weights_set(scenario, weights)
+
+        self.comparison_financial_efficiency.compute(compute_correlations=True)
+        scores_fe = self.comparison_financial_efficiency.to_dataframe()
+        scores_fe[scores_fe.columns[3:]] = (1 / scores_fe[scores_fe.columns[3:]]) / self.denominator_values
+        self.scores_financial_efficiency = scores_fe
+
+    def dataframe_financial_efficiency_scores(self):
+        if self.scores_financial_efficiency is None:
+            raise ValueError("First run the experiment")
+
+        concated = pd.concat([
+            self.comparison_financial_efficiency.to_dataframe().assign(scenario='baseline'),
+            self.scores_financial_efficiency.assign(scenario='financial_efficiency')
+        ])
+        concated = concated[['decision_problem', 'weights_set', 'evaluator', 'scenario', *self.data.index]]
+
+        return concated
+
+    def draw_financial_efficiency_ranks(self, path=None):
+        if self.scores_financial_efficiency is None:
+            raise ValueError("First run the experiment")
+
+        alternatives = self.numerator_data.index.to_list()
+
+        plt.clf()
+        plt.figure(figsize=(10,5))
+
+        for index, row in self.dataframe_financial_efficiency_scores().iterrows():
+            plt.subplot(1, 2, 1 if row['weights_set'] == 'eq' else 2)
+            scores = row[4:]
+            ranks = pd.DataFrame(rankdata(scores, axis=0, method='min'),
+                                                index=scores.index)
+            label = f"{row['scenario']} - {row['weights_set']}"
+
+            plt.plot(alternatives, ranks, label=label)
+            plt.legend()
+
+        plt.subplot(1,2,1)
+        plt.gca().invert_yaxis()
+        plt.subplot(1,2,2)
+        plt.gca().invert_yaxis()
+
+        if (path is not None):
+            plt.savefig(path)
 
 
 if __name__ == '__main__':
     experiment = VikorVAnalysis('wind_farms_data.csv')
-    experiment.run_experiment_v()
-    experiment.run_experiment_weights()
-    experiment.run_experiment_ahp()
-    experiment.run_experiment_criteria_elimination(
-        experiment.data.drop(columns=['S16', 'S17', 'F28', 'F29', 'F30']),
-        experiment.impacts.drop(index=['S16', 'S17', 'F28', 'F29', 'F30']),
-        ahp_weights=np.array([
-            0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6,
-            0.176/3, 0.176/3, 0.176/3,
-            0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, # updated from 8
-            0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10,
-            # financial costs removed completely
-        ])
-    )
-    experiment.draw_v_weights_plots()
-    experiment.csv_v_weights()
-    # experiment.heatmap_v_correlations() #todo sprawdzic dlaczego w EQ jest bialo
-    experiment.sensitivity_analysis_v()
+    # experiment.run_experiment_v()
+    # experiment.run_experiment_weights()
+    # experiment.run_experiment_ahp()
+    # experiment.run_experiment_criteria_elimination(
+    #     experiment.data.drop(columns=['S16', 'S17', 'F28', 'F29', 'F30']),
+    #     experiment.impacts.drop(index=['S16', 'S17', 'F28', 'F29', 'F30']),
+    #     ahp_weights=np.array([
+    #         0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6,
+    #         0.176/3, 0.176/3, 0.176/3,
+    #         0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, # updated from 8
+    #         0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10,
+    #         # financial costs removed completely
+    #     ])
+    # )
+    experiment.run_experiment_financial_efficiency(['F28', 'F29', 'F30'])
+    # experiment.draw_v_weights_plots()
+    # experiment.csv_v_weights()
+    # # experiment.heatmap_v_correlations() #todo sprawdzic dlaczego w EQ jest bialo
+    # experiment.sensitivity_analysis_v()
+    #
+    # experiment.draw_weights_sensitivity_plots()
+    # # experiment.heatmap_weights_correlations()
+    # experiment.draw_weights_scores()
+    #
+    # experiment.draw_ahp_weights_plots()
+    # experiment.csv_ahp_weights()
+    # # experiment.heatmap_ahp_correlations()
+    # experiment.draw_ahp_results()
+    #
+    # experiment.draw_elimination_results_comparison('ahp_clusters')
+    # plt.show()
+    # experiment.draw_ahp_and_elim_weights_plots()
+    # experiment.heatmap_elimination_correlations()
 
-    experiment.draw_weights_sensitivity_plots()
-    # experiment.heatmap_weights_correlations()
-    experiment.draw_weights_scores()
-
-    experiment.draw_ahp_weights_plots()
-    experiment.csv_ahp_weights()
-    # experiment.heatmap_ahp_correlations()
-    experiment.draw_ahp_results()
-
-    experiment.draw_elimination_results_comparison('ahp_clusters')
-    plt.show()
-    experiment.draw_ahp_and_elim_weights_plots()
-    experiment.heatmap_elimination_correlations()
+    experiment.draw_financial_efficiency_ranks(path='var/financial_efficiency_ranks.png')
