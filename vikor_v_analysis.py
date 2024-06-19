@@ -445,10 +445,13 @@ class VikorVAnalysis:
         plt.figure(figsize=(10,5))
 
         for index, row in self.dataframe_financial_efficiency_scores().iterrows():
-            plt.subplot(1, 2, 1 if row['weights_set'] == 'eq' else 2)
+            subplot = 1 if row['weights_set'] == 'eq' else 2
+            order = 1 if row['scenario'] == 'baseline' else -1
+
+            plt.subplot(1, 2, subplot)
             scores = row[4:]
-            ranks = pd.DataFrame(rankdata(scores, axis=0, method='min'),
-                                                index=scores.index)
+            ranks = pd.DataFrame(rankdata([order * i for i in scores], axis=0, method='min'),
+                                 index=scores.index)
             label = f"{row['scenario']} - {row['weights_set']}"
 
             plt.plot(alternatives, ranks, label=label)
