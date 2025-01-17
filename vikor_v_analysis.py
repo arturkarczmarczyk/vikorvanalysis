@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from comparator.comparison import Comparison
 from matplotlib import pyplot as plt
 from pyrepo_mcda.weighting_methods import critic_weighting
-from scipy.stats import rankdata
+from scipy.stats import rankdata, alpha
+from comparator.utils import plot_correlations_heatmap as static_plot_correlations_heatmap
 
 from vikor_evaluator import VikorEvaluator
 
@@ -22,9 +24,9 @@ class VikorVAnalysis:
         self.v_weights_scenarios = None
         self.comparisons_v = None
         self.weights_scenarios_weights = None
-        self.comparison_w = None
+        self.comparison_w: Comparison|None = None
         self.weights_scenarios_ahp = None
-        self.comparison_ahp = None
+        self.comparison_ahp: Comparison|None = None
 
         self.load_data(data_csv_path)
 
@@ -58,7 +60,7 @@ class VikorVAnalysis:
 
             self.comparisons_v[scenario] = comparison_v
 
-    def draw_v_weights_plots(self, path='var/weights.png', figsize=(10,10), ylim=[0, 0.5]):
+    def draw_v_weights_plots(self, path='var/weights.png', figsize=(10,10), ylim=[0, 0.5], labels=None):
         if self.v_weights_scenarios is None:
             self.run_experiment_v()
 
@@ -68,14 +70,15 @@ class VikorVAnalysis:
         i = 0
         for scenario, weights in self.v_weights_scenarios.items():
             i += 1
+            label = labels[scenario] if labels and scenario in labels else scenario
             plt.subplot(len(self.v_weights_scenarios), 1, i)
             plt.gca().set_ylim(ylim)
-            plt.title(scenario)
-            plt.plot(self.data.columns, weights, label=scenario)
+            plt.title(label)
+            plt.plot(self.data.columns, weights, label=label)
             plt.grid(color='whitesmoke', linestyle='solid')
         # plt.legend()
         if (path is not None):
-            plt.savefig('var/weights.png')
+            plt.savefig(path)
         # plt.show()
 
     def csv_v_weights(self):
@@ -189,7 +192,27 @@ class VikorVAnalysis:
         if self.comparison_w is None:
             self.run_experiment_weights()
 
-        hplt = self.comparison_w.plot_correlations_heatmap(figure_size=(50, 20))
+        correlations = self.comparison_w.correlations
+        new_index = [name.split('-')[1] for name in self.comparison_w.correlations.index]
+        new_columns = [name.split('-')[1] for name in self.comparison_w.correlations.columns]
+        correlations.index = new_index
+        correlations.columns = new_columns
+
+        hplt = static_plot_correlations_heatmap(
+            correlations,
+            title="Correlation Matrix",
+            font_scale=0.7,
+            labels_format=".2f",
+            color_map="YlGnBu",
+            x_label="Boosted weight of criterion",
+            y_label="Boosted weight of criterion",
+        )
+        # hplt = self.comparison_w.plot_correlations_heatmap(
+        #     figure_size=(20, 10),
+        #     labels_format=".2f",
+        #     x_label="Boosted weight of criterion",
+        #     y_label="Boosted weight of criterion"
+        # )
 
         if (path is not None):
             hplt.savefig(path)
@@ -223,7 +246,7 @@ class VikorVAnalysis:
             plt.plot(x_values, y_alternatives_scores, 'o', label=scenario)
 
         plt.legend()
-        plt.savefig(f'var/weights_scores.png')
+        plt.savefig(f'var/weights_scores.pdf')
 
     def run_experiment_ahp(self):
         self.weights_scenarios_ahp = {
@@ -251,19 +274,19 @@ class VikorVAnalysis:
         if self.weights_scenarios_ahp is None:
             self.run_experiment_ahp()
 
-        plt.figure(figsize=(15, 15))
+        plt.figure(figsize=(15, 10))
         plt.subplots_adjust(hspace=0.3)
         plt.suptitle(f'Computed weights of criteria for varied scenarios')
         i = 0
         for scenario, weights in self.weights_scenarios_ahp.items():
             i += 1
             plt.subplot(len(self.weights_scenarios_ahp), 1, i)
-            plt.gca().set_ylim([0, 0.6])
+            plt.gca().set_ylim([0, 0.125])
             plt.title(scenario)
             plt.plot(self.data.columns, weights, label=scenario)
             plt.grid(color='whitesmoke', linestyle='solid')
         # plt.legend()
-        plt.savefig('var/weights_with_ahp.png')
+        plt.savefig('var/weights_with_ahp.pdf')
         # plt.show()
 
 
@@ -278,8 +301,24 @@ class VikorVAnalysis:
         if self.comparison_ahp is None:
             self.run_experiment_ahp()
 
-        hplt = self.comparison_ahp.plot_correlations_heatmap(figure_size=(10, 10))
-        hplt.savefig(f'var/correlation_with_ahp.png')
+        correlations = self.comparison_ahp.correlations
+        new_names = ['Equal weights', 'CRITIC weights', 'AHP clusters']
+        correlations.index = new_names
+        correlations.columns = new_names
+
+        hplt = static_plot_correlations_heatmap(
+            correlations,
+            title="",
+            font_scale=0.8,
+            labels_format=".2f",
+            color_map="Blues",
+            x_label="",
+            y_label="",
+            figure_size=(5,3)
+        )
+
+        # hplt = self.comparison_ahp.plot_correlations_heatmap(figure_size=(10, 10))
+        hplt.savefig(f'var/correlation_with_ahp.pdf')
 
 
     def draw_ahp_results(self):
@@ -310,7 +349,7 @@ class VikorVAnalysis:
         plt.gca().invert_yaxis()
         plt.legend()
 
-        plt.savefig(f'var/results_with_ahp.png')
+        plt.savefig(f'var/results_with_ahp.pdf')
 
     def run_experiment_criteria_elimination(self, limited_data, limited_impacts, ahp_weights):
         if (self.weights_scenarios_ahp is None):
@@ -335,7 +374,7 @@ class VikorVAnalysis:
 
         self.comparison_criteria_elimination.compute(compute_correlations=True)
 
-    def draw_elimination_results_comparison(self, scenario: str, path = None):
+    def draw_elimination_results_comparison(self, scenarios: list[str], path = None):
         if self.comparison_criteria_elimination is None:
             raise ValueError("First run the experiment")
 
@@ -344,31 +383,55 @@ class VikorVAnalysis:
 
         plt.clf()
 
-        plt.figure(figsize=(20, 10))
+        num_rows = len(scenarios)
+        num_cols = 2
+        plt.figure(figsize=(num_cols * 5, num_rows * 5))
         x_values = self.data.index.to_list()
 
-        scenario_ahp_row = comparison_ahp_df[comparison_ahp_df['weights_set'] == scenario].iloc[0]
-        y_scores_ahp = scenario_ahp_row[3:]
-        y_ranks_ahp = pd.DataFrame(rankdata(y_scores_ahp, axis=0, method='min'), index=y_scores_ahp.index)
+        current_row = 0
+        for scenario in scenarios:
+            current_row += 1
 
-        scenario_elim_row = comparison_elim_df[comparison_elim_df['weights_set'] == scenario].iloc[0]
-        y_scores_elim = scenario_elim_row[3:]
-        y_ranks_elim = pd.DataFrame(rankdata(y_scores_elim, axis=0, method='min'), index=y_scores_elim.index)
+            scenario_ahp_row = comparison_ahp_df[comparison_ahp_df['weights_set'] == scenario].iloc[0]
+            y_scores_ahp = scenario_ahp_row[3:]
+            y_ranks_ahp = pd.DataFrame(rankdata(y_scores_ahp, axis=0, method='min'), index=y_scores_ahp.index)
 
-        plt.subplot(1,2,1)
-        plt.title("Scores")
-        plt.plot(x_values, y_scores_ahp, label=f"Baseline {scenario}")
-        plt.plot(x_values, y_scores_elim, label=f"{scenario} with eliminated criteria")
-        plt.gca().invert_yaxis()
-        plt.legend()
+            scenario_elim_row = comparison_elim_df[comparison_elim_df['weights_set'] == scenario].iloc[0]
+            y_scores_elim = scenario_elim_row[3:]
+            y_ranks_elim = pd.DataFrame(rankdata(y_scores_elim, axis=0, method='min'), index=y_scores_elim.index)
 
-        plt.subplot(1,2,2)
-        plt.title("Ranks")
-        plt.plot(x_values, y_ranks_ahp, label=f"Baseline {scenario}")
-        plt.plot(x_values, y_ranks_elim, label=f"{scenario} with eliminated criteria")
-        plt.gca().invert_yaxis()
-        plt.legend()
+            plt.subplot(num_rows,num_cols, ((current_row - 1) * num_cols) + 1)
+            plt.title(f"{scenario} scores")
+            plt.plot(x_values, y_scores_ahp, label=f"baseline")
+            plt.plot(x_values, y_scores_elim, label=f"with eliminated criteria")
+            plt.gca().invert_yaxis()
+            plt.legend()
 
+            # plt.subplot(num_rows,num_cols, ((current_row - 1) * num_cols) + 2)
+            # plt.title("Ranks")
+            # plt.plot(x_values, y_ranks_ahp, label=f"Baseline {scenario}")
+            # plt.plot(x_values, y_ranks_elim, label=f"{scenario} with eliminated criteria")
+            # plt.gca().invert_yaxis()
+            # plt.legend()
+
+            plt.subplot(num_rows,num_cols, ((current_row - 1) * num_cols) + 2)
+            plt.title(f"{scenario} ranks")
+            num_alternatives = len(x_values)
+            ranks = np.arange(1, num_alternatives + 1)
+            plt.plot(ranks, ranks, '-', color="black")
+            plt.plot(y_ranks_ahp, y_ranks_elim, 'o')
+            # Annotate each point
+            for i, (ahp_rank, elim_rank) in enumerate(zip(y_ranks_ahp.values, y_ranks_elim.values)):
+                plt.annotate(f'A{i + 1}', (ahp_rank, elim_rank), textcoords="offset points", xytext=(0, 10),
+                             ha='center')
+
+            plt.xlabel(f"baseline ranks")
+            plt.ylabel(f"ranks with eliminated criteria")
+
+            plt.legend()
+
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.3)
         if (path is not None):
             plt.savefig(path)
 
@@ -376,7 +439,23 @@ class VikorVAnalysis:
         if self.comparison_criteria_elimination is None:
             raise ValueError("First run the experiment")
 
-        hplt = self.comparison_criteria_elimination.plot_correlations_heatmap(figure_size=(10, 10))
+        correlations = self.comparison_criteria_elimination.correlations
+        new_names = ['Equal weights', 'CRITIC weights', 'AHP clusters']
+        correlations.index = new_names
+        correlations.columns = new_names
+
+        hplt = static_plot_correlations_heatmap(
+            correlations,
+            title="",
+            font_scale=0.8,
+            labels_format=".2f",
+            color_map="Blues",
+            x_label="",
+            y_label="",
+            figure_size=(5, 3)
+        )
+
+        # hplt = self.comparison_criteria_elimination.plot_correlations_heatmap(figure_size=(10, 10))
 
         if (path is not None):
             hplt.savefig(path)
@@ -385,9 +464,8 @@ class VikorVAnalysis:
         if self.weights_scenarios_ahp is None or self.limited_weights_scenarios_ahp is None:
             raise ValueError("First run the experiment")
 
-        plt.figure(figsize=(15, 15))
-        plt.subplots_adjust(hspace=0.3)
-        plt.suptitle(f'Computed weights of criteria for varied scenarios')
+        plt.figure(figsize=(10, 8))
+        # plt.suptitle(f'Computed weights of criteria for varied scenarios')
         i = 0
         for scenario, weights in self.weights_scenarios_ahp.items():
             i += 1
@@ -397,7 +475,10 @@ class VikorVAnalysis:
             plt.plot(self.limited_data.columns, self.limited_weights_scenarios_ahp[scenario], 'x', label=f"{scenario} - eliminated criteria")
             plt.grid(color='whitesmoke', linestyle='solid')
             plt.legend()
-        plt.savefig('var/weights_with_ahp_eliminated.png')
+
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.5)
+        plt.savefig('var/weights_with_ahp_eliminated.pdf')
         # plt.show()
 
     def run_experiment_financial_efficiency(self, criteria_for_denominator):
@@ -465,41 +546,148 @@ class VikorVAnalysis:
         if (path is not None):
             plt.savefig(path)
 
+    def get_all_ranks(self):
+        df_comparisons_v_eq = self.comparisons_v['eq'].to_dataframe()
+        # df_comparisons_v_eq = df_comparisons_v_eq[df_comparisons_v_eq['evaluator'].isin(['v_0.1', 'v_0.5', 'v_1.0'])]
+
+        df_comparisons_v_crit = self.comparisons_v['crit'].to_dataframe()
+        # df_comparisons_v_crit = df_comparisons_v_crit[df_comparisons_v_crit['evaluator'].isin(['v_0.0', 'v_0.5', 'v_1.0'])]
+
+        all_scores = pd.concat([
+            df_comparisons_v_eq,
+            df_comparisons_v_crit,
+            self.comparison_w.to_dataframe(),
+            self.comparison_ahp.to_dataframe(),
+            self.comparison_criteria_elimination.to_dataframe(),
+        ])
+        only_scores = all_scores[all_scores.columns[3:]]
+        ranks = only_scores.rank(axis=1, method='min', ascending=True)
+
+        # eliminate rows in which sum of all cells is 7 (ie all ranks are the same)
+        ranks = ranks[ranks.sum(axis=1) != 7]
+
+        return ranks
+
+    def get_min_max_average_ranks(self):
+        all_ranks = self.get_all_ranks()
+
+        min_ranks = all_ranks.min()
+        max_ranks = all_ranks.max()
+        avg_ranks = all_ranks.mean()
+
+        ranges = pd.DataFrame({
+            'min': min_ranks,
+            'max': max_ranks,
+            'avg': avg_ranks,
+        })
+
+        return ranges
+
+    def draw_rank_intervals(self):
+        all_ranks = self.get_all_ranks()
+        ranges = self.get_min_max_average_ranks()
+
+        # colors = plt.cm.tab20.colors[:all_ranks.shape[1]]
+
+        x = np.arange(1, all_ranks.shape[1] + 1)
+
+        for (xx, row) in zip(x, ranges.iterrows()):
+            plt.plot([xx, xx, xx], [row[1]['min'], row[1]['max'], row[1]['avg']], 'x--', markersize=8)
+
+        for ranks in all_ranks.to_numpy():
+            plt.plot(x+0.1, ranks, '.', markersize=10, alpha=0.008, color='black')
+
+        plt.grid(axis='both', alpha=0.7)
+        plt.xticks(x, all_ranks.columns, fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.xlabel('Alternatives', fontsize=14)
+        plt.ylabel('Rank', fontsize=14)
+        plt.title('Maximum, minimum and average rank all alternatives', fontsize=16)
+        plt.tight_layout()
+
+        plt.gca().invert_yaxis()
+
+        plt.show()
+
+    def draw_all_ranks_heatmap(self):
+        all_ranks = self.get_all_ranks()
+
+        alternative_positions_counts = {}
+
+        # go over all all_ranks columns (alternatives) and for each row (scenario) increase the alternative_positions_counts[alternative][rank] by one, where rank is the value at each cell for each alternative and scenario
+        for alternative in all_ranks.columns:
+            alternative_positions_counts[alternative] = {}
+
+            # create an index for each possible rank (1 to count(alternatives))
+            for rank in range(1, all_ranks.shape[1] + 1):
+                alternative_positions_counts[alternative][rank] = 0
+
+            for rank in all_ranks[alternative]:
+                alternative_positions_counts[alternative][rank] += 1
+
+        # convert to dataframe
+        alternative_positions_counts_df = pd.DataFrame(alternative_positions_counts)
+
+        # convert values to percentages of total scenarios (divide by number of scenarios)
+        alternative_positions_counts_df = alternative_positions_counts_df / all_ranks.shape[0]
+
+        plt.clf()
+        plt.figure(figsize=(8,6))
+        ax = plt.gca()
+
+        matrix = alternative_positions_counts_df.to_numpy()
+        sns.heatmap(matrix, cmap="Blues", annot=True, fmt=".2f", linewidths=.5, cbar_kws={"label": "Probability of having the rank"}, ax=ax)
+        ax.figure.axes[-1].yaxis.label.set_size(10)
+        ax.set_title("", fontsize=12)
+        x = np.arange(0, matrix.shape[0])
+        ax.set_xticks(x + 0.5, [f'$A_{{{i + 1}}}$' for i in range(len(x))], fontsize=8)
+        ax.set_yticks(x + 0.5, [f'${i + 1}$' for i in range(len(x))], fontsize=8)
+        ax.set_xlabel("Alternatives", fontsize=10)
+        ax.set_ylabel("Ranks", fontsize=10)
+
+        plt.tight_layout()
+        plt.savefig('var/fig-generalised-robustness-map.pdf')
+        # plt.show()
+
+
 
 if __name__ == '__main__':
     experiment = VikorVAnalysis('wind_farms_data.csv')
-    # experiment.run_experiment_v()
-    # experiment.run_experiment_weights()
-    # experiment.run_experiment_ahp()
-    # experiment.run_experiment_criteria_elimination(
-    #     experiment.data.drop(columns=['S16', 'S17', 'F28', 'F29', 'F30']),
-    #     experiment.impacts.drop(index=['S16', 'S17', 'F28', 'F29', 'F30']),
-    #     ahp_weights=np.array([
-    #         0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6,
-    #         0.176/3, 0.176/3, 0.176/3,
-    #         0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, # updated from 8
-    #         0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10,
-    #         # financial costs removed completely
-    #     ])
-    # )
-    experiment.run_experiment_financial_efficiency(['F28', 'F29', 'F30'])
-    # experiment.draw_v_weights_plots()
+    experiment.run_experiment_v()
+    experiment.run_experiment_weights()
+    experiment.run_experiment_ahp()
+    experiment.run_experiment_criteria_elimination(
+        experiment.data.drop(columns=['S16', 'S17', 'F28', 'F29', 'F30']),
+        experiment.impacts.drop(index=['S16', 'S17', 'F28', 'F29', 'F30']),
+        ahp_weights=np.array([
+            0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6, 0.041/6,
+            0.176/3, 0.176/3, 0.176/3,
+            0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, 0.465/6, # updated from 8
+            0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10, 0.318/10,
+            # financial costs removed completely
+        ])
+    )
+    # experiment.run_experiment_financial_efficiency(['F28', 'F29', 'F30'])
+    # experiment.draw_v_weights_plots(path='var/weights.pdf', ylim=[0, 0.12], labels={'eq': 'Equal weights', 'crit': 'CRITIC weights'})
     # experiment.csv_v_weights()
     # # experiment.heatmap_v_correlations() #todo sprawdzic dlaczego w EQ jest bialo
-    # experiment.sensitivity_analysis_v()
+    # experiment.sensitivity_analysis_v(path_template="var/fig-v-sensitivity_{}.pdf")
     #
-    # experiment.draw_weights_sensitivity_plots()
-    # # experiment.heatmap_weights_correlations()
+    # experiment.draw_weights_sensitivity_plots('var/weights_sensitivity.png')
+    # experiment.heatmap_weights_correlations('var/fig-correlation-weights.pdf')
     # experiment.draw_weights_scores()
     #
     # experiment.draw_ahp_weights_plots()
     # experiment.csv_ahp_weights()
-    # # experiment.heatmap_ahp_correlations()
+    # experiment.heatmap_ahp_correlations()
     # experiment.draw_ahp_results()
     #
-    # experiment.draw_elimination_results_comparison('ahp_clusters')
+    # experiment.draw_elimination_results_comparison(['eq', 'crit', 'ahp_clusters'], path='var/results_with_ahp_eliminated.pdf')
     # plt.show()
     # experiment.draw_ahp_and_elim_weights_plots()
-    # experiment.heatmap_elimination_correlations()
+    # experiment.heatmap_elimination_correlations('var/fig-correlation-with-elimination.pdf')
 
-    experiment.draw_financial_efficiency_ranks(path='var/financial_efficiency_ranks.png')
+    # experiment.draw_financial_efficiency_ranks(path='var/financial_efficiency_ranks.png')
+
+    # ranks = experiment.draw_rank_intervals()
+    experiment.draw_all_ranks_heatmap()
