@@ -108,9 +108,9 @@ class VikorVAnalysis:
                                                 index=y_alternatives_scores.index)
 
             plt.figure(figsize=(20, 10))
-            plt.suptitle(f'Sensitivity analysis for scenario {scenario}')
+            # plt.suptitle(f'Sensitivity analysis for scenario {scenario}')
 
-            plt.subplot(1, 2, 1)
+            plt.subplot(1, 3, 1)
             plt.grid(color='whitesmoke', linestyle='solid')
             plt.title('Scores')
             plt.axvline(x=0.5, color='b', linestyle='--')
@@ -119,7 +119,7 @@ class VikorVAnalysis:
                 plt.plot(x_v_values, y_alternatives_scores.loc[i], label=i)
             plt.legend()
 
-            plt.subplot(1, 2, 2)
+            plt.subplot(1, 3, 2)
             plt.grid(color='whitesmoke', linestyle='solid')
             plt.title('Ranks')
             plt.axvline(x=0.5, color='b', linestyle='--')
@@ -127,6 +127,7 @@ class VikorVAnalysis:
             for i in y_alternatives_ranks.index:
                 plt.plot(x_v_values, y_alternatives_ranks.loc[i], label=i)
             plt.legend()
+
 
             # plt.subplot(1, 3, 3)
             # plt.grid(color='whitesmoke', linestyle='solid')
@@ -141,6 +142,32 @@ class VikorVAnalysis:
             else:
                 plt.show()
 
+    def sensitivity_analysis_v_range(self, path_template='var/sensitivity_range_{}.png'):
+        v_step_rounding = len(f"{self.V_STEP}") - 2
+        ZOOM_MAX = 2
+        for scenario, comparison_v in self.comparisons_v.items():
+            x_v_values = np.arange(self.V_MIN, self.V_MAX + (self.V_STEP / 10), self.V_STEP).round(v_step_rounding)
+            y_alternatives_scores = pd.DataFrame(comparison_v.scores[self.DECISION_PROBLEM][scenario])
+            y_alternatives_ranks = pd.DataFrame(rankdata(y_alternatives_scores, axis=0, method='min'),
+                                                index=y_alternatives_scores.index)
+
+            min_ranks = y_alternatives_ranks.min(axis="columns")
+            max_ranks = y_alternatives_ranks.max(axis="columns")
+
+            plt.figure(figsize=(5, 3))
+            x = np.arange(1, y_alternatives_ranks.shape[0] + 1)
+            plt.plot([x,x], [min_ranks, max_ranks], 'x--', markersize=8)
+            plt.xticks(x, y_alternatives_ranks.index, rotation=0)
+            plt.yticks(fontsize=12)
+            plt.grid(axis='both', alpha=0.7)
+            plt.tight_layout()
+
+            plt.gca().invert_yaxis()
+
+            if (path_template is not None):
+                plt.savefig(path_template.format(scenario))
+            else:
+                plt.show()
 
     def run_experiment_weights(self):
         self.weights_scenarios_weights = {}
@@ -246,7 +273,7 @@ class VikorVAnalysis:
             plt.plot(x_values, y_alternatives_scores, 'o', label=scenario)
 
         plt.legend()
-        plt.savefig(f'var/weights_scores.pdf')
+        plt.savefig(f'var/fig-weights-scores.pdf')
 
     def run_experiment_ahp(self):
         self.weights_scenarios_ahp = {
@@ -276,7 +303,7 @@ class VikorVAnalysis:
 
         plt.figure(figsize=(15, 10))
         plt.subplots_adjust(hspace=0.3)
-        plt.suptitle(f'Computed weights of criteria for varied scenarios')
+        # plt.suptitle(f'Computed weights of criteria for varied scenarios')
         i = 0
         for scenario, weights in self.weights_scenarios_ahp.items():
             i += 1
@@ -285,9 +312,12 @@ class VikorVAnalysis:
             plt.title(scenario)
             plt.plot(self.data.columns, weights, label=scenario)
             plt.grid(color='whitesmoke', linestyle='solid')
+            plt.tight_layout()
+
         # plt.legend()
-        plt.savefig('var/weights_with_ahp.pdf')
+        plt.savefig('var/fig-weights-with-ahp.pdf')
         # plt.show()
+        plt.tight_layout()
 
 
     def csv_ahp_weights(self):
@@ -672,6 +702,7 @@ if __name__ == '__main__':
     # experiment.csv_v_weights()
     # # experiment.heatmap_v_correlations() #todo sprawdzic dlaczego w EQ jest bialo
     # experiment.sensitivity_analysis_v(path_template="var/fig-v-sensitivity_{}.pdf")
+    # experiment.sensitivity_analysis_v_range("var/fig-v-sensitivity-range-{}.pdf")
     #
     # experiment.draw_weights_sensitivity_plots('var/weights_sensitivity.png')
     # experiment.heatmap_weights_correlations('var/fig-correlation-weights.pdf')
@@ -689,5 +720,5 @@ if __name__ == '__main__':
 
     # experiment.draw_financial_efficiency_ranks(path='var/financial_efficiency_ranks.png')
 
-    # ranks = experiment.draw_rank_intervals()
+    # experiment.draw_rank_intervals()
     experiment.draw_all_ranks_heatmap()
